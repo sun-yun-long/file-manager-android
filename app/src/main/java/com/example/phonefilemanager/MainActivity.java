@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -109,13 +110,20 @@ public class MainActivity extends Activity {
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService previewExecutor = Executors.newFixedThreadPool(2);
     private final Map<FileCategory, List<FileItem>> files = new EnumMap<FileCategory, List<FileItem>>(FileCategory.class);
     private final List<TabItem> tabs = new ArrayList<TabItem>();
     private final List<TextView> tabCards = new ArrayList<TextView>();
     private final List<TextView> sortChips = new ArrayList<TextView>();
     private final List<FileItem> visibleItems = new ArrayList<FileItem>();
-    private final Map<String, Bitmap> imageThumbCache = new HashMap<String, Bitmap>();
-    private final Map<String, Bitmap> videoThumbCache = new HashMap<String, Bitmap>();
+    private final Map<String, Bitmap> imageThumbCache = new ConcurrentHashMap<String, Bitmap>();
+    private final Map<String, Bitmap> videoThumbCache = new ConcurrentHashMap<String, Bitmap>();
+    private final Map<String, ApkInfo> asyncApkInfoCache = new ConcurrentHashMap<String, ApkInfo>();
+    private final Map<String, MediaInfo> asyncMediaInfoCache = new ConcurrentHashMap<String, MediaInfo>();
+    private final Set<String> loadingImageThumbPaths = Collections.synchronizedSet(new HashSet<String>());
+    private final Set<String> loadingVideoThumbPaths = Collections.synchronizedSet(new HashSet<String>());
+    private final Set<String> loadingApkInfoPaths = Collections.synchronizedSet(new HashSet<String>());
+    private final Set<String> loadingMediaInfoPaths = Collections.synchronizedSet(new HashSet<String>());
 
     private TabItem selectedTab;
     private SortMode sortMode = SortMode.TIME;
@@ -192,6 +200,13 @@ public class MainActivity extends Activity {
                 scanFiles();
             }
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        executor.shutdownNow();
+        previewExecutor.shutdownNow();
     }
 
     @Override
@@ -1389,7 +1404,10 @@ public class MainActivity extends Activity {
         for (FileItem item : source) {
             String name = item.file.getName().toLowerCase(Locale.US);
             String parent = item.file.getParent() == null ? "" : item.file.getParent().toLowerCase(Locale.US);
-            ApkInfo apkInfo = item.category == FileCategory.APK ? apkInfoReader.read(item.file) : null;
+            ApkInfo apkInfo = item.category == FileCategory.APK ? asyncApkInfoCache.get(item.file.getAbsolutePath()) : null;
+            if (item.category == FileCategory.APK && apkInfo == null) {
+                requestApkInfoCacheAsync(item, true);
+            }
             String appName = apkInfo == null ? "" : apkInfo.appName.toLowerCase(Locale.US);
             String packageName = apkInfo == null ? "" : apkInfo.packageName.toLowerCase(Locale.US);
             if (query.length() == 0 || name.contains(query) || parent.contains(query)
@@ -1492,7 +1510,10 @@ public class MainActivity extends Activity {
 
     private String displayName(FileItem item) {
         if (item.category == FileCategory.APK) {
-            ApkInfo info = apkInfoReader.read(item.file);
+            ApkInfo info = asyncApkInfoCache.get(item.file.getAbsolutePath());
+            if (info == null) {
+                requestApkInfoCacheAsync(item, true);
+            }
             if (info != null && info.appName != null && info.appName.length() > 0) {
                 return info.appName;
             }
@@ -2059,10 +2080,38 @@ public class MainActivity extends Activity {
     }
 
     private class FileListAdapter extends BaseAdapter {
+        private static final int GRID_COLUMNS = 3;
+
+        class FileRowHolder {
+            LinearLayout row;
+            ImageView leading;
+            TextView name;
+            TextView secondary;
+            TextView meta;
+            TextView path;
+            CheckBox checkBox;
+            FileItem item;
+            String itemPath;
+        }
+
+        class ImageGridRowHolder {
+            LinearLayout row;
+            ImageGridCellHolder[] cells = new ImageGridCellHolder[GRID_COLUMNS];
+        }
+
+        class ImageGridCellHolder {
+            LinearLayout cell;
+            ImageView image;
+            TextView name;
+            CheckBox checkBox;
+            String itemPath;
+            FileItem item;
+        }
+
         @Override
         public int getCount() {
             if (isImageGridActive()) {
-                return (visibleItems.size() + 2) / 3;
+                return (visibleItems.size() + GRID_COLUMNS - 1) / GRID_COLUMNS;
             }
             return visibleItems.size();
         }
@@ -2070,7 +2119,7 @@ public class MainActivity extends Activity {
         @Override
         public FileItem getItem(int position) {
             if (isImageGridActive()) {
-                return visibleItems.get(position * 3);
+                return visibleItems.get(position * GRID_COLUMNS);
             }
             return visibleItems.get(position);
         }
@@ -2083,25 +2132,37 @@ public class MainActivity extends Activity {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             if (isImageGridActive()) {
-                return imageGridRow(position);
+                return imageGridRow(position, convertView);
             }
-            final FileItem item = getItem(position);
-            final ApkInfo apkInfo = item.category == FileCategory.APK ? apkInfoReader.read(item.file) : null;
-            final String itemPath = item.file.getAbsolutePath();
+            FileRowHolder holder;
+            if (convertView == null || !(convertView.getTag() instanceof FileRowHolder)) {
+                holder = createFileRowHolder();
+                convertView = holder.row;
+                convertView.setTag(holder);
+            } else {
+                holder = (FileRowHolder) convertView.getTag();
+            }
+            bindFileRow(holder, getItem(position));
+            return convertView;
+        }
 
+        private FileRowHolder createFileRowHolder() {
+            final FileRowHolder holder = new FileRowHolder();
             LinearLayout row = new LinearLayout(MainActivity.this);
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setBackground(Ui.round(selectedPaths.contains(itemPath) ? Ui.SOFT_BLUE : Ui.SURFACE, 24, density));
             row.setPadding(dp(20), dp(16), dp(20), dp(16));
             row.setElevation(1.8f * density);
+            holder.row = row;
 
             LinearLayout titleLine = new LinearLayout(MainActivity.this);
             titleLine.setOrientation(LinearLayout.HORIZONTAL);
             titleLine.setGravity(Gravity.CENTER_VERTICAL);
             row.addView(titleLine, new LinearLayout.LayoutParams(-1, -2));
 
-            View leading = leadingView(item, apkInfo);
-            titleLine.addView(leading, new LinearLayout.LayoutParams(dp(52), dp(52)));
+            holder.leading = new ImageView(MainActivity.this);
+            holder.leading.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            holder.leading.setBackground(Ui.round(Ui.SOFT_GRAY, 14, density));
+            titleLine.addView(holder.leading, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
             LinearLayout textColumn = new LinearLayout(MainActivity.this);
             textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -2109,103 +2170,75 @@ public class MainActivity extends Activity {
             textParams.leftMargin = dp(12);
             titleLine.addView(textColumn, textParams);
 
-            final CheckBox checkBox = new CheckBox(MainActivity.this);
-            checkBox.setChecked(selectedPaths.contains(itemPath));
-            checkBox.setVisibility(batchMode ? View.VISIBLE : View.GONE);
-            checkBox.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (checkBox.isChecked()) {
-                        selectedPaths.add(itemPath);
-                    } else {
-                        selectedPaths.remove(itemPath);
-                    }
-                    updateBatchButtons();
-                    updateBatchExtraButtons();
-                    notifyDataSetChanged();
-                }
-            });
-            titleLine.addView(checkBox, new LinearLayout.LayoutParams(-2, -2));
+            holder.checkBox = new CheckBox(MainActivity.this);
+            titleLine.addView(holder.checkBox, new LinearLayout.LayoutParams(-2, -2));
 
-            TextView name = new TextView(MainActivity.this);
-            Ui.title(name, 16);
-            name.setSingleLine(true);
-            name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-            name.setText(primaryTitle(item, apkInfo));
-            textColumn.addView(name, new LinearLayout.LayoutParams(-1, -2));
+            holder.name = new TextView(MainActivity.this);
+            Ui.title(holder.name, 16);
+            holder.name.setSingleLine(true);
+            holder.name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+            textColumn.addView(holder.name, new LinearLayout.LayoutParams(-1, -2));
 
-            TextView secondary = new TextView(MainActivity.this);
-            Ui.muted(secondary, 12);
-            secondary.setSingleLine(true);
-            secondary.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-            secondary.setText(secondaryTitle(item, apkInfo));
-            secondary.setPadding(0, dp(6), 0, 0);
-            textColumn.addView(secondary, new LinearLayout.LayoutParams(-1, -2));
+            holder.secondary = new TextView(MainActivity.this);
+            Ui.muted(holder.secondary, 12);
+            holder.secondary.setSingleLine(true);
+            holder.secondary.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+            holder.secondary.setPadding(0, dp(6), 0, 0);
+            textColumn.addView(holder.secondary, new LinearLayout.LayoutParams(-1, -2));
 
-            TextView meta = new TextView(MainActivity.this);
-            Ui.muted(meta, 13);
-            String metaText = item.category.title + " · " + FileUtils.formatSize(item.file.length()) + " · " + FileUtils.formatTime(item.file.lastModified());
-            if (selectedTab.type == TabItem.DUPLICATE) {
-                metaText = "重复文件 · " + metaText;
-            }
-            meta.setText(metaText);
-            meta.setPadding(0, dp(12), 0, 0);
-            row.addView(meta, new LinearLayout.LayoutParams(-1, -2));
+            holder.meta = new TextView(MainActivity.this);
+            Ui.muted(holder.meta, 13);
+            holder.meta.setPadding(0, dp(12), 0, 0);
+            row.addView(holder.meta, new LinearLayout.LayoutParams(-1, -2));
 
-            TextView path = new TextView(MainActivity.this);
-            Ui.muted(path, 12);
-            path.setSingleLine(true);
-            path.setEllipsize(TextUtils.TruncateAt.START);
-            path.setText(item.file.getParent());
-            path.setPadding(0, dp(8), 0, dp(12));
-            row.addView(path, new LinearLayout.LayoutParams(-1, -2));
+            holder.path = new TextView(MainActivity.this);
+            Ui.muted(holder.path, 12);
+            holder.path.setSingleLine(true);
+            holder.path.setEllipsize(TextUtils.TruncateAt.START);
+            holder.path.setPadding(0, dp(8), 0, dp(12));
+            row.addView(holder.path, new LinearLayout.LayoutParams(-1, -2));
 
             LinearLayout buttons = new LinearLayout(MainActivity.this);
             buttons.setOrientation(LinearLayout.HORIZONTAL);
             row.addView(buttons, new LinearLayout.LayoutParams(-1, dp(38)));
 
-            if (batchMode) {
-                row.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        boolean checked = !selectedPaths.contains(itemPath);
-                        if (checked) {
-                            selectedPaths.add(itemPath);
-                        } else {
-                            selectedPaths.remove(itemPath);
-                        }
-                        checkBox.setChecked(checked);
-                        updateBatchButtons();
-                        updateBatchExtraButtons();
-                        notifyDataSetChanged();
-                    }
-                });
-            }
-
-            Button open = actionButton(item.category == FileCategory.APK ? "安装" : "打开", Ui.SOFT_BLUE, Ui.PRIMARY);
-            open.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    FileUtils.openFile(MainActivity.this, item.file);
-                }
-            });
+            Button open = actionButton("打开", Ui.SOFT_BLUE, Ui.PRIMARY);
             buttons.addView(open, new LinearLayout.LayoutParams(0, -1, 1));
 
             Button detail = actionButton("详情", Ui.SOFT_GRAY, Ui.TEXT);
-            detail.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    openDetail(item);
-                }
-            });
             LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(0, -1, 1);
             detailParams.leftMargin = dp(8);
             buttons.addView(detail, detailParams);
 
             Button folder = actionButton("目录", Ui.PRIMARY, Color.WHITE);
+            LinearLayout.LayoutParams folderParams = new LinearLayout.LayoutParams(0, -1, 1);
+            folderParams.leftMargin = dp(8);
+            buttons.addView(folder, folderParams);
+
+            Button more = actionButton("⋮", Ui.SOFT_GRAY, Ui.TEXT);
+            LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(0, -1, 1);
+            moreParams.leftMargin = dp(8);
+            buttons.addView(more, moreParams);
+
+            open.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FileItem item = holder.item;
+                    if (item != null) FileUtils.openFile(MainActivity.this, item.file);
+                }
+            });
+            detail.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FileItem item = holder.item;
+                    if (item != null) openDetail(item);
+                }
+            });
             folder.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    FileItem item = holder.item;
+                    if (item == null) return;
                     File dir = item.file.getParentFile();
                     if (!ExternalDirectoryOpener.open(MainActivity.this, dir)) {
                         Intent intent = new Intent(MainActivity.this, DirectoryActivity.class);
@@ -2215,63 +2248,116 @@ public class MainActivity extends Activity {
                     }
                 }
             });
-            LinearLayout.LayoutParams folderParams = new LinearLayout.LayoutParams(0, -1, 1);
-            folderParams.leftMargin = dp(8);
-            buttons.addView(folder, folderParams);
-
-            Button more = actionButton("⋮", Ui.SOFT_GRAY, Ui.TEXT);
             more.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    showMoreActions(item);
+                    FileItem item = holder.item;
+                    if (item != null) showMoreActions(item);
                 }
             });
-            LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(0, -1, 1);
-            moreParams.leftMargin = dp(8);
-            buttons.addView(more, moreParams);
 
-            return row;
+            return holder;
         }
 
-        private View imageGridRow(int rowIndex) {
-            LinearLayout row = new LinearLayout(MainActivity.this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setPadding(0, 0, 0, 0);
-
-            for (int column = 0; column < 3; column++) {
-                int index = rowIndex * 3 + column;
-                View cell;
-                if (index < visibleItems.size()) {
-                    cell = imageGridCell(visibleItems.get(index));
-                } else {
-                    cell = new View(MainActivity.this);
-                }
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(146), 1);
-                if (column > 0) {
-                    params.leftMargin = dp(8);
-                }
-                row.addView(cell, params);
-            }
-            return row;
-        }
-
-        private View imageGridCell(final FileItem item) {
+        private void bindFileRow(final FileRowHolder holder, final FileItem item) {
             final String itemPath = item.file.getAbsolutePath();
+            holder.itemPath = itemPath;
+            holder.item = item;
+            holder.row.setBackground(Ui.round(selectedPaths.contains(itemPath) ? Ui.SOFT_BLUE : Ui.SURFACE, 24, density));
+            holder.name.setText(item.file.getName());
+            holder.secondary.setText(item.category.title + " · 加载中…");
+            holder.path.setText(item.file.getParent());
+            String metaText = item.category.title + " · " + FileUtils.formatSize(item.file.length()) + " · " + FileUtils.formatTime(item.file.lastModified());
+            if (selectedTab.type == TabItem.DUPLICATE) {
+                metaText = "重复文件 · " + metaText;
+            }
+            holder.meta.setText(metaText);
+
+            holder.checkBox.setChecked(selectedPaths.contains(itemPath));
+            holder.checkBox.setVisibility(batchMode ? View.VISIBLE : View.GONE);
+            holder.checkBox.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (holder.checkBox.isChecked()) {
+                        selectedPaths.add(itemPath);
+                    } else {
+                        selectedPaths.remove(itemPath);
+                    }
+                    updateBatchButtons();
+                    updateBatchExtraButtons();
+                    notifyDataSetChanged();
+                }
+            });
+
+            holder.row.setOnClickListener(batchMode ? new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    boolean checked = !selectedPaths.contains(itemPath);
+                    if (checked) {
+                        selectedPaths.add(itemPath);
+                    } else {
+                        selectedPaths.remove(itemPath);
+                    }
+                    holder.checkBox.setChecked(checked);
+                    updateBatchButtons();
+                    updateBatchExtraButtons();
+                    notifyDataSetChanged();
+                }
+            } : null);
+
+            holder.leading.setImageDrawable(null);
+            holder.leading.setPadding(0, 0, 0, 0);
+            holder.leading.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            holder.leading.setBackground(Ui.round(Ui.SOFT_GRAY, 14, density));
+            holder.leading.setTag(itemPath);
+
+            requestListMetaAsync(holder, item, itemPath);
+            requestLeadingAsync(holder, item, itemPath);
+        }
+
+        private View imageGridRow(int rowIndex, View convertView) {
+            ImageGridRowHolder holder;
+            if (convertView == null || !(convertView.getTag() instanceof ImageGridRowHolder)) {
+                holder = new ImageGridRowHolder();
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(0, 0, 0, 0);
+                holder.row = row;
+                for (int column = 0; column < GRID_COLUMNS; column++) {
+                    ImageGridCellHolder cellHolder = createImageGridCellHolder();
+                    holder.cells[column] = cellHolder;
+                    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(146), 1);
+                    if (column > 0) params.leftMargin = dp(8);
+                    row.addView(cellHolder.cell, params);
+                }
+                row.setTag(holder);
+                convertView = row;
+            } else {
+                holder = (ImageGridRowHolder) convertView.getTag();
+            }
+
+            for (int column = 0; column < GRID_COLUMNS; column++) {
+                int index = rowIndex * GRID_COLUMNS + column;
+                if (index < visibleItems.size()) {
+                    bindImageGridCell(holder.cells[column], visibleItems.get(index));
+                } else {
+                    clearImageGridCell(holder.cells[column]);
+                }
+            }
+            return convertView;
+        }
+
+        private ImageGridCellHolder createImageGridCellHolder() {
+            final ImageGridCellHolder holder = new ImageGridCellHolder();
             LinearLayout cell = new LinearLayout(MainActivity.this);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setPadding(dp(8), dp(8), dp(8), dp(8));
-            cell.setBackground(Ui.round(selectedPaths.contains(itemPath) ? Ui.SOFT_BLUE : Ui.SURFACE, 18, density));
             cell.setElevation(1.6f * density);
+            holder.cell = cell;
 
-            ImageView image = new ImageView(MainActivity.this);
-            Bitmap bitmap = thumbnailFor(item.file);
-            if (bitmap != null) {
-                image.setImageBitmap(bitmap);
-            } else {
-                image.setBackground(Ui.round(Ui.SOFT_GRAY, 12, density));
-            }
-            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            cell.addView(image, new LinearLayout.LayoutParams(-1, 0, 1));
+            holder.image = new ImageView(MainActivity.this);
+            holder.image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            cell.addView(holder.image, new LinearLayout.LayoutParams(-1, 0, 1));
 
             LinearLayout nameLine = new LinearLayout(MainActivity.this);
             nameLine.setOrientation(LinearLayout.HORIZONTAL);
@@ -2279,93 +2365,269 @@ public class MainActivity extends Activity {
             nameLine.setPadding(0, dp(6), 0, 0);
             cell.addView(nameLine, new LinearLayout.LayoutParams(-1, -2));
 
-            TextView name = new TextView(MainActivity.this);
-            Ui.muted(name, 11);
-            name.setSingleLine(true);
-            name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-            name.setText(item.file.getName());
-            nameLine.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            holder.name = new TextView(MainActivity.this);
+            Ui.muted(holder.name, 11);
+            holder.name.setSingleLine(true);
+            holder.name.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+            nameLine.addView(holder.name, new LinearLayout.LayoutParams(0, -2, 1));
 
-            CheckBox checkBox = new CheckBox(MainActivity.this);
-            checkBox.setChecked(selectedPaths.contains(itemPath));
-            checkBox.setVisibility(batchMode ? View.VISIBLE : View.GONE);
-            checkBox.setOnClickListener(new View.OnClickListener() {
+            holder.checkBox = new CheckBox(MainActivity.this);
+            nameLine.addView(holder.checkBox, new LinearLayout.LayoutParams(-2, -2));
+
+            holder.checkBox.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    toggleSelectedPath(itemPath);
+                    if (holder.itemPath == null) return;
+                    toggleSelectedPath(holder.itemPath);
                     notifyDataSetChanged();
                 }
             });
-            nameLine.addView(checkBox, new LinearLayout.LayoutParams(-2, -2));
 
             cell.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    if (holder.itemPath == null || holder.item == null) return;
                     if (batchMode) {
-                        toggleSelectedPath(itemPath);
+                        toggleSelectedPath(holder.itemPath);
                         notifyDataSetChanged();
                     } else {
-                        FileUtils.openFile(MainActivity.this, item.file);
+                        FileUtils.openFile(MainActivity.this, holder.item.file);
                     }
                 }
             });
             cell.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    if (!batchMode) {
-                        batchMode = true;
-                    }
-                    toggleSelectedPath(itemPath);
+                    if (holder.itemPath == null) return false;
+                    if (!batchMode) batchMode = true;
+                    toggleSelectedPath(holder.itemPath);
                     notifyDataSetChanged();
                     refreshVisibleItems();
                     return true;
                 }
             });
-            return cell;
+            return holder;
+        }
+
+        private void bindImageGridCell(final ImageGridCellHolder holder, final FileItem item) {
+            String itemPath = item.file.getAbsolutePath();
+            holder.itemPath = itemPath;
+            holder.item = item;
+            holder.cell.setVisibility(View.VISIBLE);
+            holder.cell.setBackground(Ui.round(selectedPaths.contains(itemPath) ? Ui.SOFT_BLUE : Ui.SURFACE, 18, density));
+            holder.name.setText(item.file.getName());
+            holder.checkBox.setChecked(selectedPaths.contains(itemPath));
+            holder.checkBox.setVisibility(batchMode ? View.VISIBLE : View.GONE);
+            holder.image.setImageDrawable(null);
+            holder.image.setBackground(Ui.round(Ui.SOFT_GRAY, 12, density));
+            holder.image.setTag(itemPath);
+            requestImageThumbnailAsync(item.file, itemPath, holder.image);
+        }
+
+        private void clearImageGridCell(ImageGridCellHolder holder) {
+            holder.itemPath = null;
+            holder.item = null;
+            holder.cell.setVisibility(View.INVISIBLE);
+            holder.name.setText("");
+            holder.checkBox.setChecked(false);
+            holder.checkBox.setVisibility(View.GONE);
+            holder.image.setImageDrawable(null);
+            holder.image.setTag(null);
         }
     }
 
-    private View leadingView(FileItem item, ApkInfo apkInfo) {
-        if (item.category == FileCategory.IMAGE) {
-            ImageView image = new ImageView(this);
-            Bitmap bitmap = thumbnailFor(item.file);
-            if (bitmap != null) {
-                image.setImageBitmap(bitmap);
-            } else {
-                image.setImageDrawable(null);
-                image.setBackground(Ui.round(colorFor(item.category), 14, density));
+    private void requestListMetaAsync(final FileListAdapter.FileRowHolder holder, final FileItem item, final String itemPath) {
+        if (item.category == FileCategory.APK) {
+            ApkInfo cached = asyncApkInfoCache.get(itemPath);
+            if (cached != null) {
+                if (itemPath.equals(holder.itemPath)) {
+                    holder.name.setText(cached.appName);
+                    holder.secondary.setText("版本 " + cached.versionName + " · " + cached.packageName);
+                    if (cached.icon != null) {
+                        holder.leading.setBackground(null);
+                        holder.leading.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                        holder.leading.setPadding(dp(2), dp(2), dp(2), dp(2));
+                        holder.leading.setImageDrawable(cached.icon);
+                    }
+                }
+                return;
             }
-            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            image.setBackground(Ui.round(Ui.SOFT_GRAY, 14, density));
-            return image;
+            requestApkInfoCacheAsync(item, true);
+            return;
+        }
+        if (item.category == FileCategory.AUDIO || item.category == FileCategory.VIDEO) {
+            MediaInfo cached = asyncMediaInfoCache.get(itemPath);
+            if (cached != null) {
+                if (!itemPath.equals(holder.itemPath)) {
+                    return;
+                }
+                if (item.category == FileCategory.AUDIO) {
+                    if (cached.title != null && !"-".equals(cached.title)) {
+                        holder.name.setText(cached.title);
+                    }
+                    holder.secondary.setText(cached.artist + " · " + cached.album + " · " + cached.durationText());
+                } else if (cached.durationMs > 0) {
+                    holder.secondary.setText("视频 · " + cached.durationText());
+                } else {
+                    holder.secondary.setText(item.category.title);
+                }
+                return;
+            }
+            if (!loadingMediaInfoPaths.add(itemPath)) {
+                return;
+            }
+            previewExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    final MediaInfo info = mediaInfoReader.read(item.file, false);
+                    loadingMediaInfoPaths.remove(itemPath);
+                    if (info != null) {
+                        asyncMediaInfoCache.put(itemPath, info);
+                    }
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (!itemPath.equals(holder.itemPath)) {
+                                return;
+                            }
+                            if (item.category == FileCategory.AUDIO && info != null) {
+                                if (info.title != null && !"-".equals(info.title)) {
+                                    holder.name.setText(info.title);
+                                }
+                                holder.secondary.setText(info.artist + " · " + info.album + " · " + info.durationText());
+                            } else if (item.category == FileCategory.VIDEO && info != null && info.durationMs > 0) {
+                                holder.secondary.setText("视频 · " + info.durationText());
+                            } else {
+                                holder.secondary.setText(item.category.title);
+                            }
+                        }
+                    });
+                }
+            });
+            return;
+        }
+        holder.secondary.setText(item.category.title);
+    }
+
+    private void requestLeadingAsync(final FileListAdapter.FileRowHolder holder, final FileItem item, final String itemPath) {
+        if (item.category == FileCategory.APK) {
+            ApkInfo cached = asyncApkInfoCache.get(itemPath);
+            if (cached != null && cached.icon != null) {
+                holder.leading.setBackground(null);
+                holder.leading.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                holder.leading.setPadding(dp(2), dp(2), dp(2), dp(2));
+                holder.leading.setImageDrawable(cached.icon);
+                return;
+            }
+            requestApkInfoCacheAsync(item, true);
+            return;
+        }
+        if (item.category == FileCategory.IMAGE) {
+            requestImageThumbnailAsync(item.file, itemPath, holder.leading);
+            return;
         }
         if (item.category == FileCategory.VIDEO) {
-            ImageView image = new ImageView(this);
-            Bitmap bitmap = videoThumbnailFor(item.file);
-            if (bitmap != null) {
-                image.setImageBitmap(bitmap);
-            } else {
-                image.setImageDrawable(null);
+            requestVideoThumbnailAsync(item.file, itemPath, holder.leading);
+            return;
+        }
+        holder.leading.setBackground(Ui.round(colorFor(item.category), 14, density));
+    }
+
+    private void requestApkInfoCacheAsync(final FileItem item, final boolean refreshVisibleList) {
+        final String itemPath = item.file.getAbsolutePath();
+        if (asyncApkInfoCache.containsKey(itemPath)) {
+            return;
+        }
+        if (!loadingApkInfoPaths.add(itemPath)) {
+            return;
+        }
+        previewExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                final ApkInfo apkInfo = apkInfoReader.read(item.file);
+                loadingApkInfoPaths.remove(itemPath);
+                if (apkInfo != null) {
+                    asyncApkInfoCache.put(itemPath, apkInfo);
+                }
+                if (!refreshVisibleList) {
+                    return;
+                }
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        refreshVisibleItems();
+                    }
+                });
             }
-            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            image.setBackground(Ui.round(Ui.SOFT_GRAY, 14, density));
-            return image;
+        });
+    }
+
+    private void requestImageThumbnailAsync(final File file, final String itemPath, final ImageView imageView) {
+        imageView.setTag(itemPath);
+        Bitmap cached = imageThumbCache.get(itemPath);
+        if (cached != null) {
+            imageView.setBackground(null);
+            imageView.setImageBitmap(cached);
+            return;
         }
-        if (item.category == FileCategory.APK && apkInfo != null && apkInfo.icon != null) {
-            ImageView icon = new ImageView(this);
-            icon.setImageDrawable(apkInfo.icon);
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            icon.setPadding(dp(2), dp(2), dp(2), dp(2));
-            return icon;
+        if (!loadingImageThumbPaths.add(itemPath)) {
+            return;
         }
-        TextView badge = new TextView(this);
-        badge.setText(shortLabel(item.category));
-        badge.setGravity(Gravity.CENTER);
-        badge.setTextSize(14);
-        badge.setTypeface(Typeface.DEFAULT_BOLD);
-        badge.setTextColor(Color.WHITE);
-        badge.setBackground(Ui.round(colorFor(item.category), 14, density));
-        return badge;
+        previewExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                final Bitmap bitmap = thumbnailFor(file);
+                loadingImageThumbPaths.remove(itemPath);
+                if (bitmap == null) {
+                    return;
+                }
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Object tag = imageView.getTag();
+                        if (!(tag instanceof String) || !itemPath.equals(tag)) {
+                            return;
+                        }
+                        imageView.setBackground(null);
+                        imageView.setImageBitmap(bitmap);
+                    }
+                });
+            }
+        });
+    }
+
+    private void requestVideoThumbnailAsync(final File file, final String itemPath, final ImageView imageView) {
+        imageView.setTag(itemPath);
+        Bitmap cached = videoThumbCache.get(itemPath);
+        if (cached != null) {
+            imageView.setBackground(null);
+            imageView.setImageBitmap(cached);
+            return;
+        }
+        if (!loadingVideoThumbPaths.add(itemPath)) {
+            return;
+        }
+        previewExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                final Bitmap bitmap = videoThumbnailFor(file);
+                loadingVideoThumbPaths.remove(itemPath);
+                if (bitmap == null) {
+                    return;
+                }
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Object tag = imageView.getTag();
+                        if (!(tag instanceof String) || !itemPath.equals(tag)) {
+                            return;
+                        }
+                        imageView.setBackground(null);
+                        imageView.setImageBitmap(bitmap);
+                    }
+                });
+            }
+        });
     }
 
     private Bitmap thumbnailFor(File file) {
@@ -2403,41 +2665,6 @@ public class MainActivity extends Activity {
             return info.frame;
         }
         return null;
-    }
-
-    private String primaryTitle(FileItem item, ApkInfo apkInfo) {
-        if (item.category == FileCategory.APK && apkInfo != null) {
-            return apkInfo.appName;
-        }
-        if (item.category == FileCategory.AUDIO) {
-            MediaInfo info = mediaInfoReader.read(item.file, false);
-            if (info != null && info.title != null && !"-".equals(info.title)) {
-                return info.title;
-            }
-        }
-        return item.file.getName();
-    }
-
-    private String secondaryTitle(FileItem item, ApkInfo apkInfo) {
-        if (item.category == FileCategory.APK && apkInfo != null) {
-            return "版本 " + apkInfo.versionName + " · " + apkInfo.packageName;
-        }
-        if (item.category == FileCategory.APK) {
-            return item.file.getName();
-        }
-        if (item.category == FileCategory.AUDIO) {
-            MediaInfo info = mediaInfoReader.read(item.file, false);
-            if (info != null) {
-                return info.artist + " · " + info.album + " · " + info.durationText();
-            }
-        }
-        if (item.category == FileCategory.VIDEO) {
-            MediaInfo info = mediaInfoReader.read(item.file, false);
-            if (info != null && info.durationMs > 0) {
-                return "视频 · " + info.durationText();
-            }
-        }
-        return item.category.title;
     }
 
     private String shortLabel(FileCategory category) {
