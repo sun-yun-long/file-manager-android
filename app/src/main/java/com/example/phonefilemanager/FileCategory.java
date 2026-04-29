@@ -4,7 +4,7 @@ public enum FileCategory {
     DOCUMENT("文档", "doc"),
     IMAGE("图片", "image"),
     VIDEO("视频", "video"),
-    AUDIO("音乐", "audio"),
+    AUDIO("音频", "audio"),
     APK("安装包", "apk");
 
     public final String title;

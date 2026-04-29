@@ -59,7 +59,11 @@ public class StorageOverview {
             totalFiles++;
             categoryBytes[item.category.ordinal()] += bytes;
 
-            DirectoryStat stat = findOrCreate(directoryIndex, topLevelName(rootPath, item.file), topLevelPath(rootPath, item.file));
+            DirectoryStat stat = findOrCreate(
+                    directoryIndex,
+                    topLevelName(rootPath, item.file),
+                    topLevelPath(rootPath, item.file)
+            );
             stat.fileCount++;
             stat.totalBytes += bytes;
         }
