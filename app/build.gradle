@@ -2,6 +2,9 @@ plugins {
     id "com.android.application"
 }
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
 android {
     namespace "com.example.phonefilemanager"
     compileSdk 35
@@ -19,11 +22,12 @@ afterEvaluate {
     android.applicationVariants.all { variant ->
         def variantName = variant.name
         def variantCap = variantName.substring(0, 1).toUpperCase() + variantName.substring(1)
-        def apkFileName = "手机文件管理-${variantName}.apk"
         def copyTask = tasks.register("copy${variantCap}ApkToRoot") {
             doNotTrackState("Copying APK into the project root is an external side effect.")
             dependsOn("package${variantCap}")
             doLast {
+                def timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"))
+                def apkFileName = "手机文件管理-${timestamp}.apk"
                 copy {
                     from(layout.buildDirectory.dir("outputs/apk/${variantName}"))
                     include("*.apk")

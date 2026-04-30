@@ -7,15 +7,15 @@ import android.view.View;
 import android.widget.TextView;
 
 public class Ui {
-    public static final int BG = Color.rgb(241, 245, 251);
+    public static final int BG = Color.rgb(244, 247, 253);
     public static final int SURFACE = Color.WHITE;
     public static final int TEXT = Color.rgb(15, 23, 42);
     public static final int MUTED = Color.rgb(100, 116, 139);
-    public static final int LINE = Color.rgb(223, 231, 242);
-    public static final int PRIMARY = Color.rgb(42, 110, 255);
-    public static final int PRIMARY_DARK = Color.rgb(24, 78, 210);
-    public static final int SOFT_BLUE = Color.rgb(230, 240, 255);
-    public static final int SOFT_GRAY = Color.rgb(246, 248, 252);
+    public static final int LINE = Color.rgb(214, 225, 240);
+    public static final int PRIMARY = Color.rgb(51, 105, 255);
+    public static final int PRIMARY_DARK = Color.rgb(32, 78, 218);
+    public static final int SOFT_BLUE = Color.rgb(233, 241, 255);
+    public static final int SOFT_GRAY = Color.rgb(248, 250, 254);
     public static final int GREEN = Color.rgb(34, 197, 94);
     public static final int ORANGE = Color.rgb(245, 158, 11);
     public static final int RED = Color.rgb(239, 68, 68);
@@ -49,13 +49,13 @@ public class Ui {
     }
 
     public static void button(View view, int color, float density) {
-        view.setBackground(round(color, 16, density));
+        view.setBackground(round(color, 18, density));
         view.setMinimumHeight(0);
         view.setMinimumWidth(0);
     }
 
     public static void card(View view, float density) {
-        view.setBackground(stroke(SURFACE, LINE, 24, density));
-        view.setElevation(2f * density);
+        view.setBackground(stroke(SURFACE, LINE, 28, density));
+        view.setElevation(2.8f * density);
     }
 }

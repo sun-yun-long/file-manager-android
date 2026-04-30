@@ -227,17 +227,17 @@ public class MainActivity extends Activity {
 
         LinearLayout topContent = new LinearLayout(this);
         topContent.setOrientation(LinearLayout.VERTICAL);
-        topContent.setPadding(dp(22), dp(18), dp(22), 0);
+        topContent.setPadding(dp(20), dp(16), dp(20), 0);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(2), dp(6), dp(2), dp(10));
+        header.setPadding(0, dp(4), 0, dp(10));
         topContent.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         TextView title = new TextView(this);
         title.setText("文件管理");
-        Ui.title(title, 24);
+        Ui.title(title, 26);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
         Button searchButton = iconButton("⌕");
@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
                 }
             }
         });
-        header.addView(searchButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        header.addView(searchButton, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
         Button menuButton = iconButton("⋮");
         menuButton.setOnClickListener(new View.OnClickListener() {
@@ -258,14 +258,14 @@ public class MainActivity extends Activity {
                 showLargeThresholdDialog();
             }
         });
-        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(dp(40), dp(40));
-        menuParams.leftMargin = dp(4);
+        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        menuParams.leftMargin = dp(6);
         header.addView(menuButton, menuParams);
 
         statusText = new TextView(this);
-        Ui.muted(statusText, 14);
+        Ui.muted(statusText, 13);
         statusText.setTextColor(Ui.PRIMARY_DARK);
-        statusText.setPadding(dp(16), dp(12), dp(16), dp(12));
+        statusText.setPadding(dp(16), dp(10), dp(16), dp(10));
         statusText.setBackground(Ui.stroke(Ui.SOFT_BLUE, Color.rgb(201, 221, 255), 18, density));
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
         statusParams.bottomMargin = dp(12);
@@ -273,7 +273,7 @@ public class MainActivity extends Activity {
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams actionWrap = new LinearLayout.LayoutParams(-1, dp(48));
+        LinearLayout.LayoutParams actionWrap = new LinearLayout.LayoutParams(-1, dp(38));
         actionWrap.bottomMargin = dp(12);
         topContent.addView(actions, actionWrap);
 
@@ -304,7 +304,7 @@ public class MainActivity extends Activity {
                 showLargeThresholdDialog();
             }
         });
-        LinearLayout.LayoutParams thresholdParams = new LinearLayout.LayoutParams(-1, dp(42));
+        LinearLayout.LayoutParams thresholdParams = new LinearLayout.LayoutParams(-1, dp(38));
         thresholdParams.bottomMargin = dp(12);
         topContent.addView(thresholdButton, thresholdParams);
 
@@ -332,21 +332,14 @@ public class MainActivity extends Activity {
             public void afterTextChanged(Editable s) {
             }
         });
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(48));
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(46));
         searchParams.bottomMargin = dp(12);
         topContent.addView(searchInput, searchParams);
 
         LinearLayout overview = new LinearLayout(this);
         overview.setOrientation(LinearLayout.VERTICAL);
         Ui.card(overview, density);
-        overview.setPadding(dp(20), dp(20), dp(20), dp(20));
-        overview.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                overviewExpanded = !overviewExpanded;
-                updateOverviewPanel();
-            }
-        });
+        overview.setPadding(dp(20), dp(20), dp(20), dp(18));
         LinearLayout.LayoutParams overviewParams = new LinearLayout.LayoutParams(-1, -2);
         overviewParams.bottomMargin = dp(12);
         topContent.addView(overview, overviewParams);
@@ -365,11 +358,11 @@ public class MainActivity extends Activity {
         LinearLayout storageRow = new LinearLayout(this);
         storageRow.setOrientation(LinearLayout.HORIZONTAL);
         storageRow.setGravity(Gravity.CENTER_VERTICAL);
-        storageRow.setPadding(0, 0, 0, dp(14));
+        storageRow.setPadding(0, 0, 0, dp(12));
         overview.addView(storageRow, new LinearLayout.LayoutParams(-1, -2));
 
         storageRingView = new StorageRingView(this);
-        storageRow.addView(storageRingView, new LinearLayout.LayoutParams(dp(124), dp(124)));
+        storageRow.addView(storageRingView, new LinearLayout.LayoutParams(dp(122), dp(122)));
 
         LinearLayout storageTextColumn = new LinearLayout(this);
         storageTextColumn.setOrientation(LinearLayout.VERTICAL);
@@ -391,14 +384,13 @@ public class MainActivity extends Activity {
         storageTextColumn.addView(storageLegendRow, new LinearLayout.LayoutParams(-1, -2));
 
         overviewCompactText = new TextView(this);
-        Ui.title(overviewCompactText, 15);
+        Ui.muted(overviewCompactText, 13);
         overviewCompactText.setSingleLine(false);
-        overviewCompactText.setPadding(0, 0, 0, dp(10));
+        overviewCompactText.setPadding(0, 0, 0, dp(12));
         overview.addView(overviewCompactText, new LinearLayout.LayoutParams(-1, -2));
 
         overviewToggleText = new TextView(this);
-        Ui.muted(overviewToggleText, 12);
-        overviewToggleText.setPadding(0, 0, 0, dp(10));
+        overviewToggleText.setVisibility(View.GONE);
         overview.addView(overviewToggleText, new LinearLayout.LayoutParams(-1, -2));
 
         overviewSummaryRow = new LinearLayout(this);
@@ -437,6 +429,7 @@ public class MainActivity extends Activity {
 
         topDirectoryLayout = new LinearLayout(this);
         topDirectoryLayout.setOrientation(LinearLayout.VERTICAL);
+        topDirectoryLayout.setVisibility(View.GONE);
         overview.addView(topDirectoryLayout, new LinearLayout.LayoutParams(-1, -2));
 
         HorizontalScrollView scrollView = new HorizontalScrollView(this);
@@ -445,12 +438,12 @@ public class MainActivity extends Activity {
         tabRow.setOrientation(LinearLayout.HORIZONTAL);
         tabRow.setPadding(0, 0, dp(6), 0);
         scrollView.addView(tabRow);
-        LinearLayout.LayoutParams tabWrapParams = new LinearLayout.LayoutParams(-1, dp(82));
+        LinearLayout.LayoutParams tabWrapParams = new LinearLayout.LayoutParams(-1, dp(66));
         topContent.addView(scrollView, tabWrapParams);
 
         for (final TabItem tab : tabs) {
             TextView card = new TextView(this);
-            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setGravity(Gravity.CENTER);
             card.setTextSize(12);
             card.setTypeface(Typeface.DEFAULT_BOLD);
             card.setSingleLine(false);
@@ -474,8 +467,8 @@ public class MainActivity extends Activity {
                     refreshVisibleItems();
                 }
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(92), dp(68));
-            params.rightMargin = dp(10);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(78), dp(54));
+            params.rightMargin = dp(8);
             tabRow.addView(card, params);
             tabCards.add(card);
         }
@@ -483,9 +476,9 @@ public class MainActivity extends Activity {
         LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);
         tools.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams toolsParams = new LinearLayout.LayoutParams(-1, dp(42));
-        toolsParams.topMargin = dp(6);
-        toolsParams.bottomMargin = dp(6);
+        LinearLayout.LayoutParams toolsParams = new LinearLayout.LayoutParams(-1, dp(38));
+        toolsParams.topMargin = 0;
+        toolsParams.bottomMargin = dp(8);
         topContent.addView(tools, toolsParams);
 
         resultText = new TextView(this);
@@ -504,6 +497,7 @@ public class MainActivity extends Activity {
                 refreshVisibleItems();
             }
         });
+        imageViewModeButton.setBackground(Ui.stroke(Ui.SURFACE, Ui.LINE, 16, density));
         LinearLayout.LayoutParams imageModeParams = new LinearLayout.LayoutParams(dp(58), dp(32));
         imageModeParams.leftMargin = dp(6);
         tools.addView(imageViewModeButton, imageModeParams);
@@ -512,7 +506,7 @@ public class MainActivity extends Activity {
             TextView chip = new TextView(this);
             chip.setText(mode.title);
             chip.setGravity(Gravity.CENTER);
-            chip.setTextSize(13);
+            chip.setTextSize(12);
             chip.setTypeface(Typeface.DEFAULT_BOLD);
             chip.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -521,7 +515,7 @@ public class MainActivity extends Activity {
                     refreshVisibleItems();
                 }
             });
-            LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(dp(54), dp(32));
+            LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(dp(52), dp(32));
             chipParams.leftMargin = dp(6);
             tools.addView(chip, chipParams);
             sortChips.add(chip);
@@ -529,9 +523,9 @@ public class MainActivity extends Activity {
 
         LinearLayout batchActions = new LinearLayout(this);
         batchActions.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams batchParams = new LinearLayout.LayoutParams(-1, dp(42));
-        batchParams.topMargin = dp(2);
-        batchParams.bottomMargin = dp(10);
+        LinearLayout.LayoutParams batchParams = new LinearLayout.LayoutParams(-1, dp(40));
+        batchParams.topMargin = 0;
+        batchParams.bottomMargin = dp(8);
         topContent.addView(batchActions, batchParams);
 
         batchButton = actionButton("批量选择", Ui.TEXT, Color.WHITE);
@@ -567,8 +561,8 @@ public class MainActivity extends Activity {
 
         LinearLayout batchExtraActions = new LinearLayout(this);
         batchExtraActions.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams batchExtraParams = new LinearLayout.LayoutParams(-1, dp(42));
-        batchExtraParams.bottomMargin = dp(10);
+        LinearLayout.LayoutParams batchExtraParams = new LinearLayout.LayoutParams(-1, dp(40));
+        batchExtraParams.bottomMargin = dp(8);
         topContent.addView(batchExtraActions, batchExtraParams);
 
         duplicateSelectButton = actionButton("保留最新", Ui.SOFT_GRAY, Ui.TEXT);
@@ -607,7 +601,7 @@ public class MainActivity extends Activity {
         filterRow = new LinearLayout(this);
         filterRow.setOrientation(LinearLayout.HORIZONTAL);
         filterScroll.addView(filterRow);
-        LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(-1, dp(38));
+        LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(-1, dp(36));
         filterParams.bottomMargin = dp(10);
         topContent.addView(filterScroll, filterParams);
 
@@ -799,39 +793,33 @@ public class MainActivity extends Activity {
         String largestCategory = storageOverview.largestCategory == null ? "暂无" : storageOverview.largestCategory.title;
         updateStorageUsagePanel();
         if (overviewCompactText != null) {
-            overviewCompactText.setText("共 " + storageOverview.totalFiles + " 个 · "
-                    + FileUtils.formatSize(storageOverview.totalBytes)
-                    + " · 重复可省 " + FileUtils.formatSize(duplicateResult.wastedBytes));
+            overviewCompactText.setText("共 " + storageOverview.totalFiles + " 个文件 · 扫描内容 " + FileUtils.formatSize(storageOverview.totalBytes) + " · 重复可省 " + FileUtils.formatSize(duplicateResult.wastedBytes));
         }
         if (overviewToggleText != null) {
-            overviewToggleText.setText(overviewExpanded ? "点按收起空间详情" : "点按展开空间详情");
+            overviewToggleText.setText("");
         }
         if (overviewSummaryRow != null) {
-            overviewSummaryRow.setVisibility(overviewExpanded ? View.VISIBLE : View.GONE);
+            overviewSummaryRow.setVisibility(View.VISIBLE);
         }
         if (topDirectoryTitleText != null) {
-            topDirectoryTitleText.setVisibility(overviewExpanded ? View.VISIBLE : View.GONE);
+            topDirectoryTitleText.setVisibility(View.GONE);
         }
         if (topDirectoryLayout != null) {
-            topDirectoryLayout.setVisibility(overviewExpanded ? View.VISIBLE : View.GONE);
+            topDirectoryLayout.setVisibility(View.GONE);
         }
         if (totalSummaryCard != null) {
-            totalSummaryCard.setText("总文件\n" + storageOverview.totalFiles + " 个\n"
-                    + FileUtils.formatSize(storageOverview.totalBytes));
+            totalSummaryCard.setText("全部文件\n" + storageOverview.totalFiles + " 个\n" + FileUtils.formatSize(storageOverview.totalBytes));
         }
         if (duplicateSummaryCard != null) {
-            duplicateSummaryCard.setText("重复文件\n" + duplicateResult.items.size() + " 个\n"
-                    + FileUtils.formatSize(duplicateResult.wastedBytes));
+            duplicateSummaryCard.setText("重复文件\n" + duplicateResult.items.size() + " 个\n" + FileUtils.formatSize(duplicateResult.wastedBytes));
         }
         if (largeSummaryCard != null) {
             List<FileItem> largeItems = sourceForTab(new TabItem(TabItem.LARGE, "large"));
-            largeSummaryCard.setText("大文件\n" + largeItems.size() + " 个\n"
-                    + FileUtils.formatSize(FileUtils.totalSize(largeItems)));
+            largeSummaryCard.setText("大文件\n" + largeItems.size() + " 个\n" + FileUtils.formatSize(FileUtils.totalSize(largeItems)));
         }
         if (apkSummaryCard != null) {
             List<FileItem> apkItems = files.get(FileCategory.APK);
-            apkSummaryCard.setText("安装包\n" + (apkItems == null ? 0 : apkItems.size()) + " 个\n"
-                    + FileUtils.formatSize(FileUtils.totalSize(apkItems == null ? new ArrayList<FileItem>() : apkItems)));
+            apkSummaryCard.setText("安装包\n" + (apkItems == null ? 0 : apkItems.size()) + " 个\n" + FileUtils.formatSize(FileUtils.totalSize(apkItems == null ? new ArrayList<FileItem>() : apkItems)));
         }
         if (topDirectoryLayout != null) {
             topDirectoryLayout.removeAllViews();
@@ -2252,31 +2240,21 @@ public class MainActivity extends Activity {
             buttons.setOrientation(LinearLayout.HORIZONTAL);
             row.addView(buttons, new LinearLayout.LayoutParams(-1, dp(36)));
 
-            Button open = actionButton("打开", Ui.SOFT_BLUE, Ui.PRIMARY);
-            buttons.addView(open, new LinearLayout.LayoutParams(0, -1, 1));
+            Button detail = actionButton("\u8be6\u60c5", Ui.SURFACE, Ui.TEXT);
+            detail.setBackground(Ui.stroke(Ui.SURFACE, Ui.LINE, 16, density));
+            buttons.addView(detail, new LinearLayout.LayoutParams(0, -1, 1));
 
-            Button detail = actionButton("详情", Ui.SOFT_GRAY, Ui.TEXT);
-            LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(0, -1, 1);
-            detailParams.leftMargin = dp(8);
-            buttons.addView(detail, detailParams);
-
-            Button folder = actionButton("目录", Ui.PRIMARY, Color.WHITE);
+            Button folder = actionButton("\u76ee\u5f55", Ui.PRIMARY, Color.WHITE);
             LinearLayout.LayoutParams folderParams = new LinearLayout.LayoutParams(0, -1, 1);
             folderParams.leftMargin = dp(8);
             buttons.addView(folder, folderParams);
+
 
             Button more = actionButton("⋮", Ui.SOFT_GRAY, Ui.TEXT);
             LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(0, -1, 1);
             moreParams.leftMargin = dp(8);
             buttons.addView(more, moreParams);
 
-            open.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    FileItem item = holder.item;
-                    if (item != null) FileUtils.openFile(MainActivity.this, item.file);
-                }
-            });
             detail.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -2355,7 +2333,12 @@ public class MainActivity extends Activity {
                     updateBatchExtraButtons();
                     notifyDataSetChanged();
                 }
-            } : null);
+            } : new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    FileUtils.openFile(MainActivity.this, item.file);
+                }
+            });
 
             holder.leading.setImageDrawable(null);
             holder.leading.setPadding(0, 0, 0, 0);
